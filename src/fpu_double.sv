@@ -82,7 +82,7 @@ module fpu_double(
  output reg [6:0]  count_ready);
    
 reg [63:0]	opa_reg, opb_reg, opc_reg, sqrt0;
-reg [2:0]	fpu_op_reg;
+reg [2:0]	fpu_op_reg, sqrtcnt;
 reg [1:0]	rmode_reg;
 reg			enable_reg;
 reg			enable_strt;
@@ -803,6 +803,7 @@ begin
 	     invalid <= 0;	   	 
 	     divbyzero <= 0;	   	 
 	     out <= 0;
+             sqrtcnt <= 0;
              count_ready <= 0;
 	     enable_reg <= 0;
 	     enable_strt <= 0;
@@ -848,6 +849,7 @@ begin
 		  prev_inexact <= 0;
 		  if (fpu_op != 23)
 		    invalid_sqrt <= 0;
+                  sqrtcnt <= 0;
 		  sqrt0 <= opa[63] ? 64'h7ff8000000000000: {opa[62:53]+511,sqlookup({~opa[52],opa[51:44]}),44'b0};
 		  case (rnd_mode)
 		    fpnew_pkg::RNE: rmode_reg <= 0;
@@ -882,9 +884,10 @@ begin
                        if (fpu_op == 11)
                          begin
                             sqrt0 <= out_round;
-                            if ((sqrt0 == out_round) || opa[63] || !opa[62:0])
+                            if ((sqrt0 == out_round) || opa[63] || !opa[62:0] || &sqrtcnt)
 			      begin
 				 ready_0 <= 1;
+                                 sqrtcnt <= 0;
 				 invalid_sqrt <= opa[63];
 			      end
                             else
@@ -895,6 +898,7 @@ begin
 				 enable_reg_1 <= 0;
 				 enable_reg_2 <= 0;	   
 				 enable_reg_3 <= 0;
+                                 sqrtcnt <= sqrtcnt+1;
 			      end
                          end
                        else
