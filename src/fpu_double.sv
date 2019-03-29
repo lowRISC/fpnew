@@ -753,7 +753,7 @@ end
 
 always @(posedge clk)
 begin
-	case (fpu_op_reg)
+	casez (fpu_op_reg)
 	3'b000:		count_cycles <= 20;
 	3'b001:		count_cycles <= 21;
 	3'b010:		count_cycles <= 21; // integer to double
@@ -925,7 +925,7 @@ begin
                   0, 1, 2, 3, 4, 5, 17, 18, 21: out <= except_enable_0 ? out_except_0 : out_round;
                   6: out <= mul_round;
                   11: out <=  except_enable_0 ? out_except_0 : !opa[62:0] ? 64'b0 : out_round;
-                  13, 18, 20, 26: out <= /*except_enable ? out_except :*/ {(~out_round[63]),out_round[62:0]};
+                  13, 20, 26: out <= /*except_enable ? out_except :*/ {(~out_round[63]),out_round[62:0]};
                   7, 23: casez (rnd_mode) /* meaning overloaded, see fpu_wrap.sv */
                            3'b000: out <= {opb[63],opa[62:0]}; /* this is a guess, no tests found in ISA suite */
                            3'b001: out <= {opa[63]^opb[63],opa[62:0]};
