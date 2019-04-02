@@ -196,8 +196,8 @@ fifo_v3 #(
    assign push_i = in_valid_i & ~full_o;
    assign data_i = {in_ready_o, operands_i, int_fmt_i, src_fmt_i, dst_fmt_i, rnd_mode_i, tag_i, op_i, op_mod_i};
    
-`ifndef VERILATOR
-   
+`ifdef XLNX_ILA_FPU
+
    wire trig_in_ack;
    
    xlnx_ila_4 fpu_ila (
