@@ -141,13 +141,14 @@ reg [7:0] mantissa_sq;
    wire        nan_0, nan_1, snan_0, snan_1, inf_0, inf_1;
    wire [6:0]  norm_shift;
 
-   function [31:0] double_to_single;
+   function [63:0] double_to_single;
       input [63:0] arg;
 
       begin
+	 double_to_single[63:32] = {32{arg[63]}};
 	 double_to_single[31] = arg[63];
-	 double_to_single[30:24] = arg[62:52] ? arg[62:52] - 960 : '0;
-	 double_to_single[23:0] = arg[51:29];
+	 double_to_single[30:23] = arg[62:52] ? arg[62:52] - 896 : '0;
+	 double_to_single[22:0] = arg[51:29] + arg[28]; // does not handle overflow yet
       end
 
    endfunction // case
@@ -157,15 +158,15 @@ reg [7:0] mantissa_sq;
 
       begin
 	 single_to_double[63] = arg[31];
-	 single_to_double[62:52] = arg[31:24] ? arg[30:24] + 960 : '0;
-	 single_to_double[51:0] = arg[23:0] << 29;
+	 single_to_double[62:52] = arg[30:23] ? arg[30:23] + 896 : '0; // does not handle denorm single ...
+	 single_to_double[51:0] = arg[22:0] << 29;
       end
 
    endfunction // case
 
-wire [63:0] opa64 = src_fmt == fpnew_pkg::FP32 ? single_to_double(opa) : opa;
-wire [63:0] opb64 = src_fmt == fpnew_pkg::FP32 ? single_to_double(opb) : opb;
-wire [63:0] opc64 = src_fmt == fpnew_pkg::FP32 ? single_to_double(opc) : opc;
+wire [63:0] opa64 = src_fmt == fpnew_pkg::FP32 && !fpu_op[4] ? single_to_double(opa) : opa;
+wire [63:0] opb64 = src_fmt == fpnew_pkg::FP32 && !fpu_op[4] ? single_to_double(opb) : opb;
+wire [63:0] opc64 = src_fmt == fpnew_pkg::FP32 && !fpu_op[4] ? single_to_double(opc) : opc;
    
    function [51:44] sqlookup;
       input [8:0] idx;
@@ -948,17 +949,26 @@ begin
                     end
                 endcase
                 case(fpu_op)
-                  0, 1, 2, 3, 4, 5, 18, 21: out <= except_enable_0 ? out_except_0 : out_round;
+                  0, 1, 2, 3, 4, 5, 17, 18, 21: out <= except_enable_0 ? out_except_0 : out_round;
                   6: out <= mul_round;
                   11: out <=  except_enable_0 ? out_except_0 : !opa64[62:0] ? 64'b0 : out_round;
                   13, 20, 26: out <= /*except_enable ? out_except :*/ {(~out_round[63]),out_round[62:0]};
-                  7, 23: casez (rnd_mode) /* meaning overloaded, see fpu_wrap.sv */
-                           3'b000: out <= {opb64[63],opa64[62:0]}; /* this is a guess, no tests found in ISA suite */
-                           3'b001: out <= {opa64[63]^opb64[63],opa64[62:0]};
-                           3'b010: out <= {(~opb64[63]),opa64[62:0]};
-                           3'b011: out <= opa64;
-                           default: out <= 'HDEADBEEF;
-                         endcase // casez (rnd_mode)
+                  7, 23: casez({src_fmt,dst_fmt})
+                       6'b001001: /* fmv.x.d */
+                           casez (rnd_mode) /* meaning overloaded, see fpu_wrap.sv */
+                                    3'b000: out <= {opb64[63],opa64[62:0]}; /* this is a guess, no tests found in ISA suite */
+                                    3'b001: out <= {opa64[63]^opb64[63],opa64[62:0]};
+                                    3'b010: out <= {(~opb64[63]),opa64[62:0]};
+                                    3'b011: out <= opa64;
+                                    default: out <= 'HDEADBEEF;
+                                  endcase // casez (rnd_mode)
+                       6'b000000: /* fmv.x.w */
+                         begin
+                            out <= double_to_single(opa_reg);
+                            inexact <= |opa_reg[28:0];
+                         end
+                       default: out <= 'HDEADBEEF;
+                     endcase
                   8: casez({snan_0,inf_0,nan_0,out_round[63],|out_round[62:52],|out_round[51:0]})
                        6'b0101??: out <= 1<<0;
                        6'b00011?: out <= 1<<1;
@@ -988,13 +998,6 @@ begin
                          out <= opa_reg;
                        6'b000001: /* fcvt.d.s */
                          out <= opa_reg;
-                       default: out <= 'HDEADBEEF;
-                     endcase
-                  17: casez({src_fmt,dst_fmt})
-                       6'b001001: /* fmv.x.d */
-                         out <= except_enable_0 ? out_except_0 : out_round;
-                       6'b000000: /* fmv.x.w */
-                         out <= double_to_single(except_enable_0 ? out_except_0 : out_round);
                        default: out <= 'HDEADBEEF;
                      endcase
                   default: out <= 'HDEADBEEF;
