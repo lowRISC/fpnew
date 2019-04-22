@@ -81,7 +81,7 @@ module fpu_double(
  output reg [6:0]  count_cycles,
  output reg [6:0]  count_ready);
    
-reg [63:0]	opa_reg, opb_reg, opc_reg, sqrt0;
+reg [63:0] 	   opa_reg, opb_reg, opc_reg, sqrt0;
 reg [2:0]	fpu_op_reg, sqrtcnt;
 reg [1:0]	rmode_reg;
 reg			enable_reg;
@@ -140,6 +140,32 @@ reg [7:0] mantissa_sq;
    wire        underflow_1, overflow_1, inexact_1, exception_1, invalid_1;
    wire        nan_0, nan_1, snan_0, snan_1, inf_0, inf_1;
    wire [6:0]  norm_shift;
+
+   function [31:0] double_to_single;
+      input [63:0] arg;
+
+      begin
+	 double_to_single[31] = arg[63];
+	 double_to_single[30:24] = arg[62:52] ? arg[62:52] - 960 : '0;
+	 double_to_single[23:0] = arg[51:29];
+      end
+
+   endfunction // case
+
+   function [63:0] single_to_double;
+      input [31:0] arg;
+
+      begin
+	 single_to_double[63] = arg[31];
+	 single_to_double[62:52] = arg[31:24] ? arg[30:24] + 960 : '0;
+	 single_to_double[51:0] = arg[23:0] << 29;
+      end
+
+   endfunction // case
+
+wire [63:0] opa64 = src_fmt == fpnew_pkg::FP32 ? single_to_double(opa) : opa;
+wire [63:0] opb64 = src_fmt == fpnew_pkg::FP32 ? single_to_double(opb) : opb;
+wire [63:0] opc64 = src_fmt == fpnew_pkg::FP32 ? single_to_double(opc) : opc;
    
    function [51:44] sqlookup;
       input [8:0] idx;
@@ -674,7 +700,7 @@ fpu_sub u2(
 	   .exponent_2(exp_sub_out), .shift_inexact(shift_sub_inexact));
 
 fpu_mul u3(
-	   .clk(clk), .rst(rst), .enable(mul_enable), .opa(opa), .opb(opb),
+	   .clk(clk), .rst(rst), .enable(mul_enable), .opa(opa64), .opb(opb64),
 	   .sign(mul_sign), .product_7(mul_out), .exponent_5(exp_mul_out), .shift_inexact(shift_mul_inexact));	
 
 fpu_round u3a(.clk(clk), .rst(rst), .enable(op_enable), .round_mode(rmode_reg),
@@ -684,7 +710,7 @@ fpu_round u3a(.clk(clk), .rst(rst), .enable(op_enable), .round_mode(rmode_reg),
 	      .round_out(mul_round), .exponent_final(exponent_mul_post_round));		
 	
 fpu_exceptions u3b(.clk(clk), .rst(rst), .enable(mul_enable), .rmode(rmode_reg),
-	          .opa(opa), .opb(opb),
+	          .opa(opa64), .opb(opb64),
 	          .in_except(mul_round), .exponent_in(exponent_mul_post_round),
 	          .mantissa_in(mantissa_round[1:0]),
                   .add(1'b0), .subtract(1'b0),
@@ -714,7 +740,7 @@ fpu_exceptions u6(.clk(clk), .rst(rst), .enable(op_enable), .rmode(rmode_reg),
 	          .inexact(inexact_0), .exception(exception_0), .invalid(invalid_0),
                   .NaN_out_trigger(nan_0), .out_inf_trigger(inf_0), .SNaN_input(snan_0));
 
-fpu_normalise u7 (.clk, .int_in(opa), .fpu_op, .int_fmt, .norm_shift, .unsigned_opa);
+fpu_normalise u7 (.clk, .int_in(opa64), .fpu_op, .int_fmt, .norm_shift, .unsigned_opa);
 
 always @(posedge clk)
 begin
@@ -740,7 +766,7 @@ begin
                default: mantissa_round <= diff_out + unsigned_opa[norm_shift-3 +: 3];
              endcase
 	     exponent_round <= exp_sub_out + norm_shift;
-	     sign_round <= opa[63] && !fpu_op[4];
+	     sign_round <= opa64[63] && !fpu_op[4];
 	  end
 	default:
 	  begin
@@ -832,25 +858,25 @@ begin
              i2d <= 0;
 	     casez(fpu_op)
 	       5'b?0010: begin adda_reg <= unsigned_opa >> norm_shift; addb_reg <= 64'b0; i2d <= 1; end /* signed/unsigned integer to double */
-	       5'b00011: begin diva_reg <= opa; divb_reg <= opb; end
-	       5'b01011: begin diva_reg <= opa; divb_reg <= sqrt0; adda_reg <= mul_round; addb_reg <= sqrt0; end
-	       5'b10101: begin adda_reg <= mul_round; addb_reg <= opc; end
-	       5'b?1001: begin adda_reg <= opa; addb_reg <= opb; end /* for compare, minmax */
-	       5'b10111: begin adda_reg <= opa; addb_reg <= opb; end
-	       5'b??0??: begin adda_reg <= opb; addb_reg <= opc; end
-	       5'b??1??: begin adda_reg <= opc; addb_reg <= mul_round; end
+	       5'b00011: begin diva_reg <= opa64; divb_reg <= opb64; end
+	       5'b01011: begin diva_reg <= opa64; divb_reg <= sqrt0; adda_reg <= mul_round; addb_reg <= sqrt0; end
+	       5'b10101: begin adda_reg <= mul_round; addb_reg <= opc64; end
+	       5'b?1001: begin adda_reg <= opa64; addb_reg <= opb64; end /* for compare, minmax */
+	       5'b10111: begin adda_reg <= opa64; addb_reg <= opb64; end
+	       5'b??0??: begin adda_reg <= opb64; addb_reg <= opc64; end
+	       5'b??1??: begin adda_reg <= opc64; addb_reg <= mul_round; end
 	       endcase
 	     if (enable_reg_0)
 	       begin
-		  opa_reg <= opa;
-		  opb_reg <= opb;
-		  opc_reg <= opc;
+		  opa_reg <= opa64;
+		  opb_reg <= opb64;
+		  opc_reg <= opc64;
 		  fpu_op_reg <= fpu_op;
 		  prev_inexact <= 0;
 		  if (fpu_op != 23)
 		    invalid_sqrt <= 0;
                   sqrtcnt <= 0;
-		  sqrt0 <= opa[63] ? 64'h7ff8000000000000: {opa[62:53]+511,sqlookup({~opa[52],opa[51:44]}),44'b0};
+		  sqrt0 <= opa64[63] ? 64'h7ff8000000000000: {opa64[62:53]+511,sqlookup({~opa64[52],opa64[51:44]}),44'b0};
 		  case (rnd_mode)
 		    fpnew_pkg::RNE: rmode_reg <= 0;
 		    fpnew_pkg::RTZ: rmode_reg <= 1;
@@ -884,11 +910,11 @@ begin
                        if (fpu_op == 11)
                          begin
                             sqrt0 <= out_round;
-                            if ((sqrt0 == out_round) || opa[63] || !opa[62:0] || &sqrtcnt)
+                            if ((sqrt0 == out_round) || opa64[63] || !opa64[62:0] || &sqrtcnt)
 			      begin
 				 ready_0 <= 1;
                                  sqrtcnt <= 0;
-				 invalid_sqrt <= opa[63];
+				 invalid_sqrt <= opa64[63];
 			      end
                             else
 			      begin
@@ -922,15 +948,15 @@ begin
                     end
                 endcase
                 case(fpu_op)
-                  0, 1, 2, 3, 4, 5, 17, 18, 21: out <= except_enable_0 ? out_except_0 : out_round;
+                  0, 1, 2, 3, 4, 5, 18, 21: out <= except_enable_0 ? out_except_0 : out_round;
                   6: out <= mul_round;
-                  11: out <=  except_enable_0 ? out_except_0 : !opa[62:0] ? 64'b0 : out_round;
+                  11: out <=  except_enable_0 ? out_except_0 : !opa64[62:0] ? 64'b0 : out_round;
                   13, 20, 26: out <= /*except_enable ? out_except :*/ {(~out_round[63]),out_round[62:0]};
                   7, 23: casez (rnd_mode) /* meaning overloaded, see fpu_wrap.sv */
-                           3'b000: out <= {opb[63],opa[62:0]}; /* this is a guess, no tests found in ISA suite */
-                           3'b001: out <= {opa[63]^opb[63],opa[62:0]};
-                           3'b010: out <= {(~opb[63]),opa[62:0]};
-                           3'b011: out <= opa;
+                           3'b000: out <= {opb64[63],opa64[62:0]}; /* this is a guess, no tests found in ISA suite */
+                           3'b001: out <= {opa64[63]^opb64[63],opa64[62:0]};
+                           3'b010: out <= {(~opb64[63]),opa64[62:0]};
+                           3'b011: out <= opa64;
                            default: out <= 'HDEADBEEF;
                          endcase // casez (rnd_mode)
                   8: casez({snan_0,inf_0,nan_0,out_round[63],|out_round[62:52],|out_round[51:0]})
@@ -962,6 +988,13 @@ begin
                          out <= opa_reg;
                        6'b000001: /* fcvt.d.s */
                          out <= opa_reg;
+                       default: out <= 'HDEADBEEF;
+                     endcase
+                  17: casez({src_fmt,dst_fmt})
+                       6'b001001: /* fmv.x.d */
+                         out <= except_enable_0 ? out_except_0 : out_round;
+                       6'b000000: /* fmv.x.w */
+                         out <= double_to_single(except_enable_0 ? out_except_0 : out_round);
                        default: out <= 'HDEADBEEF;
                      endcase
                   default: out <= 'HDEADBEEF;
