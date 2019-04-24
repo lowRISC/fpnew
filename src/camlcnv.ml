@@ -32,3 +32,6 @@ let split32to64 (sgn,exp,mant,_) =
   let exp' = if exp > 0 then exp + 896 else 0 in
   let mant' = mant lsl 29 in
   (sgn,exp',mant',expon64 (sgn,exp',mant'))
+
+let f2i (sgn,exp,mant,_) =
+  (if sgn > 0 then -1 else 1) * (mant lsr (52-exp+1023))

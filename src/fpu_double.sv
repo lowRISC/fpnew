@@ -92,8 +92,8 @@ reg			enable_reg_2; // high for one clock cycle
 reg			enable_reg_3; // high for two clock cycles
 reg			op_enable;	  
 wire		count_busy = (count_ready <= count_cycles);
-reg			ready_0;
-reg			ready_1;
+reg		ready_0;
+reg		ready_1;
 wire		underflow_0;
 wire		overflow_0;
 wire		inexact_0;
@@ -103,8 +103,10 @@ reg		add_enable;
 reg		sub_enable; 
 reg		mul_enable; 
 reg		div_enable; 
-reg [63:0] adda_reg, addb_reg, diva_reg, divb_reg;
-
+reg [63:0]      adda_reg, addb_reg, diva_reg, divb_reg;
+reg [79:0]      f2i;
+reg             f2iov;
+   
 wire    mul_accum = (!fpu_op_reg[2]) || (mul_enable && (count_ready >= 24) && (fpu_op_reg[2:0] != 3'b110));
    
 wire	add_enable_0 = ((fpu_op_reg[1:0] == 2'b00) && mul_accum) & !(adda_reg[63] ^ addb_reg[63]);
@@ -741,7 +743,7 @@ fpu_exceptions u6(.clk(clk), .rst(rst), .enable(op_enable), .rmode(rmode_reg),
 	          .inexact(inexact_0), .exception(exception_0), .invalid(invalid_0),
                   .NaN_out_trigger(nan_0), .out_inf_trigger(inf_0), .SNaN_input(snan_0));
 
-fpu_normalise u7 (.clk, .int_in(opa64), .fpu_op, .int_fmt, .norm_shift, .unsigned_opa);
+fpu_normalise u7 (.clk, .int_in(opa), .fpu_op, .int_fmt, .norm_shift, .unsigned_opa);
 
 always @(posedge clk)
 begin
@@ -999,7 +1001,16 @@ begin
                        6'b000001: /* fcvt.d.s */
                          out <= opa_reg;
                        default: out <= 'HDEADBEEF;
-                     endcase
+                      endcase // casez ({src_fmt,dst_fmt})
+                  10: begin
+                        f2i = {1'b1,opa_reg[51:0],16'b0} >> (1075-opa_reg[62:52]);
+                        f2iov = int_fmt == fpnew_pkg::INT32 && f2i[89:47];
+                        out <= f2iov ?
+                                (opa_reg[63] ? 64'hFFFFFFFF80000000 : 64'h000000007FFFFFFF) : 
+                                (opa_reg[63] ? (-f2i[89:16]) : f2i[89:16]);
+                        inexact <= |f2i[15:0];
+                        invalid <= f2iov;
+                      end
                   default: out <= 'HDEADBEEF;
                 endcase
 	     end // if (ready_1)
