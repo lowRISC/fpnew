@@ -105,7 +105,7 @@ reg		mul_enable;
 reg		div_enable; 
 reg [63:0]      adda_reg, addb_reg, diva_reg, divb_reg;
 reg [79:0]      f2i;
-reg             f2iov;
+reg             f2iov, f2inv;
    
 wire    mul_accum = (!fpu_op_reg[2]) || (mul_enable && (count_ready >= 24) && (fpu_op_reg[2:0] != 3'b110));
    
@@ -790,7 +790,6 @@ begin
 	3'b10?:		count_cycles <= 45; // multiply accum
 	3'b110:		count_cycles <= 24;
 	3'b111:		count_cycles <= 10; 
-	default:	count_cycles <= 100;
 	endcase
 end
 
@@ -954,7 +953,7 @@ begin
                   0, 1, 2, 3, 4, 5, 17, 18, 21: out <= except_enable_0 ? out_except_0 : out_round;
                   6: out <= mul_round;
                   11: out <=  except_enable_0 ? out_except_0 : !opa64[62:0] ? 64'b0 : out_round;
-                  13, 20, 26: out <= /*except_enable ? out_except :*/ {(~out_round[63]),out_round[62:0]};
+                  13, 20: out <= /*except_enable ? out_except :*/ {(~out_round[63]),out_round[62:0]};
                   7, 23: casez({src_fmt,dst_fmt})
                        6'b001001: /* fmv.x.d */
                            casez (rnd_mode) /* meaning overloaded, see fpu_wrap.sv */
@@ -982,7 +981,6 @@ begin
                        6'b0100??: out <= 1<<7;
                        6'b1?????: out <= 1<<8;
                        6'b0?1???: out <= 1<<9;
-                       default: out <= 'HDEADBEEF; /* should never happen */
                        endcase
                   9: casez (rnd_mode) /* meaning overloaded, see fpu_wrap.sv */
                            3'b000: /* fle.d */ out <= (out_round[63] || !out_round[62:0]) && !nan_0;
@@ -1002,14 +1000,15 @@ begin
                          out <= opa_reg;
                        default: out <= 'HDEADBEEF;
                       endcase // casez ({src_fmt,dst_fmt})
-                  10: begin
+                  10, 26: begin
                         f2i = {1'b1,opa_reg[51:0],16'b0} >> (1075-opa_reg[62:52]);
-                        f2iov = int_fmt == fpnew_pkg::INT32 && f2i[89:47];
-                        out <= f2iov ?
+                        f2iov = int_fmt == fpnew_pkg::INT32 && f2i[79:47];
+                        f2inv = fpu_op[4]&opa_reg[63]&(opa_reg[62:52] >= 1023);
+                        out <= f2inv ? 'b0 : f2iov ?
                                 (opa_reg[63] ? 64'hFFFFFFFF80000000 : 64'h000000007FFFFFFF) : 
-                                (opa_reg[63] ? (-f2i[89:16]) : f2i[89:16]);
+                                (opa_reg[63] ? (-f2i[79:16]) : f2i[79:16]);
                         inexact <= |f2i[15:0];
-                        invalid <= f2iov;
+                        invalid <= f2iov | f2inv;
                       end
                   default: out <= 'HDEADBEEF;
                 endcase
