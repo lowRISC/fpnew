@@ -171,9 +171,9 @@ reg [7:0] mantissa_sq;
 
    endfunction // case
 
-wire [63:0] opa64 = src_fmt == fpnew_pkg::FP32 && !fpu_op[4] ? single_to_double(opa) : opa;
-wire [63:0] opb64 = src_fmt == fpnew_pkg::FP32 && !fpu_op[4] ? single_to_double(opb) : opb;
-wire [63:0] opc64 = src_fmt == fpnew_pkg::FP32 && !fpu_op[4] ? single_to_double(opc) : opc;
+wire [63:0] opa64 = src_fmt == fpnew_pkg::FP32 && (fpu_op[4:0] != 23) ? single_to_double(opa) : opa;
+wire [63:0] opb64 = src_fmt == fpnew_pkg::FP32 && (fpu_op[4:0] != 23) ? single_to_double(opb) : opb;
+wire [63:0] opc64 = src_fmt == fpnew_pkg::FP32 && (fpu_op[4:0] != 23) ? single_to_double(opc) : opc;
    
    function [51:44] sqlookup;
       input [8:0] idx;
@@ -870,6 +870,7 @@ begin
 	       5'b10101: begin adda_reg <= mul_round; addb_reg <= opc64; end
 	       5'b?1001: begin adda_reg <= opa64; addb_reg <= opb64; end /* for compare, minmax */
 	       5'b10111: begin adda_reg <= opa64; addb_reg <= opb64; end
+	       5'b?0001: begin adda_reg <= opc64; addb_reg <= opb64; end
 	       5'b??0??: begin adda_reg <= opb64; addb_reg <= opc64; end
 	       5'b??1??: begin adda_reg <= opc64; addb_reg <= mul_round; end
 	       endcase
@@ -955,17 +956,34 @@ begin
                     end
                 endcase
                 case(fpu_op)
-                  0, 1, 3, 4, 5, 17, 18, 21: out <= except_enable_0 ? out_except_0 : out_round;
-                  6: out <= mul_round;
-                  11: out <=  except_enable_0 ? out_except_0 : !opa64[62:0] ? 64'b0 : out_round;
+                  11: casez(dst_fmt)
+                       3'b001: /* fcvt.d.l */
+                         out <= except_enable_0 ? out_except_0 : !opa64[62:0] ? 64'b0 : out_round;
+                       3'b000: /* fcvt.s.w */
+                         begin
+                            out <= double_to_single(except_enable_0 ? out_except_0 : !opa64[62:0] ? 64'b0 : out_round);
+                            inexact <= |out_round[28:0];
+                         end
+                       default: out <= 'HDEADBEEF;
+                     endcase
                   13, 20: out <= /*except_enable ? out_except :*/ {(~out_round[63]),out_round[62:0]};
-                  2: casez(dst_fmt)
+                  0, 1, 2, 3, 4, 5, 17, 18, 21: casez(dst_fmt)
                        3'b001: /* fcvt.d.l */
                          out <= except_enable_0 ? out_except_0 : out_round;
                        3'b000: /* fcvt.s.w */
                          begin
                             out <= double_to_single(out_round);
-                            inexact <= |out_round[28:0];
+                            inexact <= inexact_0 | (|out_round[28:0]);
+                         end
+                       default: out <= 'HDEADBEEF;
+                     endcase
+                  6: casez(dst_fmt)
+                       3'b001: /* fcvt.d.l */
+                         out <= mul_round;
+                       3'b000: /* fcvt.s.w */
+                         begin
+                            out <= double_to_single(mul_round);
+                            inexact <= |mul_round[28:0];
                          end
                        default: out <= 'HDEADBEEF;
                      endcase
@@ -979,9 +997,13 @@ begin
                                     default: out <= 'HDEADBEEF;
                                   endcase // casez (rnd_mode)
                        6'b000000: /* fmv.x.w */
-                         begin
-                            out <= opa_reg;
-                         end
+                           casez (rnd_mode) /* meaning overloaded, see fpu_wrap.sv */
+                                    3'b000: out <= {opb64[31],opa64[30:0]}; /* this is a guess, no tests found in ISA suite */
+                                    3'b001: out <= {opa64[31]^opb64[31],opa64[30:0]};
+                                    3'b010: out <= {(~opb64[31]),opa64[30:0]};
+                                    3'b011: out <= opa64;
+                                    default: out <= 'HDEADBEEF;
+                                  endcase // casez (rnd_mode)
                        default: out <= 'HDEADBEEF;
                      endcase
                   8: casez({snan_0,inf_0,nan_0,out_round[63],|out_round[62:52],|out_round[51:0]})
