@@ -104,7 +104,7 @@ reg		sub_enable;
 reg		mul_enable; 
 reg		div_enable; 
 reg [63:0]      adda_reg, addb_reg, diva_reg, divb_reg;
-reg [79:0]      f2i;
+reg [90:0]      f2i;
 reg             f2iov, f2inv;
    
 wire    mul_accum = (!fpu_op_reg[2]) || (mul_enable && (count_ready >= 24) && (fpu_op_reg[2:0] != 3'b110));
@@ -145,12 +145,17 @@ reg [7:0] mantissa_sq;
 
    function [63:0] double_to_single;
       input [63:0] arg;
-
+      reg          thresh;
+      
       begin
+         thresh = arg[62:52] > 896;
 	 double_to_single[63:32] = {32{arg[63]}};
 	 double_to_single[31] = arg[63];
-	 double_to_single[30:23] = arg[62:52] ? arg[62:52] - 896 : '0;
-	 double_to_single[22:0] = arg[51:29] + arg[28]; // does not handle overflow yet
+	 double_to_single[30:23] = arg[62:52] ? (thresh ? arg[62:52] - 896 : 0) : '0;
+	 double_to_single[22:0] = arg[62:52] ?
+                                  (thresh ? arg[51:29] + arg[28] : (arg[62:52] > 872 ?
+                                                                    arg[51:29] >> 897-arg[62:52] : 0)) : 0;
+         // does not handle overflow yet
       end
 
    endfunction // case
@@ -950,10 +955,20 @@ begin
                     end
                 endcase
                 case(fpu_op)
-                  0, 1, 2, 3, 4, 5, 17, 18, 21: out <= except_enable_0 ? out_except_0 : out_round;
+                  0, 1, 3, 4, 5, 17, 18, 21: out <= except_enable_0 ? out_except_0 : out_round;
                   6: out <= mul_round;
                   11: out <=  except_enable_0 ? out_except_0 : !opa64[62:0] ? 64'b0 : out_round;
                   13, 20: out <= /*except_enable ? out_except :*/ {(~out_round[63]),out_round[62:0]};
+                  2: casez(dst_fmt)
+                       3'b001: /* fcvt.d.l */
+                         out <= except_enable_0 ? out_except_0 : out_round;
+                       3'b000: /* fcvt.s.w */
+                         begin
+                            out <= double_to_single(out_round);
+                            inexact <= |out_round[28:0];
+                         end
+                       default: out <= 'HDEADBEEF;
+                     endcase
                   7, 23: casez({src_fmt,dst_fmt})
                        6'b001001: /* fmv.x.d */
                            casez (rnd_mode) /* meaning overloaded, see fpu_wrap.sv */
@@ -965,8 +980,7 @@ begin
                                   endcase // casez (rnd_mode)
                        6'b000000: /* fmv.x.w */
                          begin
-                            out <= double_to_single(opa_reg);
-                            inexact <= |opa_reg[28:0];
+                            out <= opa_reg;
                          end
                        default: out <= 'HDEADBEEF;
                      endcase
@@ -995,14 +1009,17 @@ begin
                          endcase // casez (rnd_mode)
                   15: casez({src_fmt,dst_fmt})
                        6'b001000: /* fcvt.s.d */
-                         out <= opa_reg;
+                         begin
+                            out <= double_to_single(opa_reg);
+                            inexact <= |opa_reg[28:0];
+                         end
                        6'b000001: /* fcvt.d.s */
-                         out <= opa_reg;
+                         out <= opa_reg; /* already converted at the opa64 stage */
                        default: out <= 'HDEADBEEF;
                       endcase // casez ({src_fmt,dst_fmt})
                   10, 26: begin
-                        f2i = {1'b1,opa_reg[51:0],16'b0} >> (1075-opa_reg[62:52]);
-                        f2iov = int_fmt == fpnew_pkg::INT32 && f2i[79:47];
+                        f2i = {1'b1,opa_reg[51:0],27'b0} >> (1086-opa_reg[62:52]);
+                        f2iov = (int_fmt == fpnew_pkg::INT32 && f2i[79:47]) || (opa_reg[62:52] >= 1086) || f2i[90:80];
                         f2inv = fpu_op[4]&opa_reg[63]&(opa_reg[62:52] >= 1023);
                         out <= f2inv ? 'b0 : f2iov ?
                                 (opa_reg[63] ? 64'hFFFFFFFF80000000 : 64'h000000007FFFFFFF) : 
