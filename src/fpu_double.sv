@@ -870,7 +870,7 @@ begin
 	       5'b10101: begin adda_reg <= mul_round; addb_reg <= opc64; end
 	       5'b?1001: begin adda_reg <= opa64; addb_reg <= opb64; end /* for compare, minmax */
 	       5'b10111: begin adda_reg <= opa64; addb_reg <= opb64; end
-	       5'b?0001: begin adda_reg <= opc64; addb_reg <= opb64; end
+//	       5'b?0001: begin adda_reg <= opc64; addb_reg <= opb64; end
 	       5'b??0??: begin adda_reg <= opb64; addb_reg <= opc64; end
 	       5'b??1??: begin adda_reg <= opc64; addb_reg <= mul_round; end
 	       endcase
