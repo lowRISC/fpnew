@@ -62,3 +62,27 @@ let trunc32 x = float32(join32(split64to32 (split64 x)));;
 
 let f2i (sgn,exp,mant,_) =
   Int64.mul (if sgn > 0 then -1L else 1L) (Int64.shift_right_logical (Int64.shift_left (Int64.of_int mant) 11) (63-exp+1023))
+
+(*
+ (arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9,arg10,arg11,arg12,arg13,arg14,arg15,arg16,arg17,arg18,arg19,arg20,arg21,arg22,arg23)
+ *)
+
+let scan1 f =
+  let fd = open_in f in
+  let lines = ref [] in (try while true do lines := input_line fd :: !lines done with err -> close_in fd);
+  Array.of_list (List.rev !lines)
+
+
+(*
+ let (a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x) = Scanf.fscanf fd "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,]"
+ (fun a b c d e f g h i j k l m n o p q r s t u v w x -> (a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x)) in
+  (try
+    Scanf.fscanf fd "%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX"
+    (fun arg1 arg2 arg3 arg4 arg5 arg6 arg7 arg8 arg9 arg10 arg11 arg12 arg13 arg14 arg15 arg16 arg17 arg18 arg19 arg20 arg21 arg22 arg23 -> incr cnt)
+    with _ -> close_in fd);
+  !cnt
+*)
+
+let contents = scan1 "/local/scratch/jrrk2/ariane-lowrisc-genesys2/fpga/iladata.csv";;
+let headers = Scanf.sscanf contents.(0) "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,]" (fun a b c d e f g h i j k l m n o p q r s t u v w -> ([a;b;c;d;e;f;g;h;i;j;k;l;m;n;o;p;q;r;s;t;u;v;w]));;
+let array ix = Scanf.sscanf contents.(ix) "%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX,%LX" (fun a b c d e f g h i j k l m n o p q r s t u v w -> Array.of_list([a;b;c;d;e;f;g;h;i;j;k;l;m;n;o;p;q;r;s;t;u;v;w]));;
