@@ -12,7 +12,7 @@
 // Author: Stefan Mach <smach@iis.ee.ethz.ch>
 // This version modified by Jonathan Kimmitt for the "dummy" FPU (to meet timing)
 
-module fpnew_top #(
+module fpnew_top_dummy #(
   // FPU configuration
   parameter fpnew_pkg::fpu_features_t       Features       = fpnew_pkg::RV64D_Xsflt,
   parameter fpnew_pkg::fpu_implementation_t Implementation = fpnew_pkg::DEFAULT_NOREGS,
