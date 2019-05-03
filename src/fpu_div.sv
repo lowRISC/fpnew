@@ -34,6 +34,7 @@
 
 
 `timescale 1ns / 100ps
+`default_nettype wire
 
 module fpu_div(
  input         clk,
