@@ -12,7 +12,7 @@
 // Author: Stefan Mach <smach@iis.ee.ethz.ch>
 
 module fpnew_fma #(
-  parameter fpnew_pkg::fp_format_e   FpFormat,//    = fpnew_pkg::FP32,
+  parameter fpnew_pkg::fp_format_e   FpFormat    = fpnew_pkg::fp_format_e'(0),
   parameter int unsigned             NumPipeRegs = 0,
   parameter fpnew_pkg::pipe_config_t PipeConfig  = fpnew_pkg::BEFORE,
   parameter type                     TagType     = logic,
@@ -108,9 +108,9 @@ module fpnew_fma #(
       .rnd_mode_i,
       .op_i,
       .op_mod_i,
-      .src_fmt_i      ( fpnew_pkg::fp_format_e'(0) ), // unused
-      .dst_fmt_i      ( fpnew_pkg::fp_format_e'(0) ), // unused
-      .int_fmt_i      ( fpnew_pkg::INT8 ), // unused
+      .src_fmt_i      ( fpnew_pkg::fp_format_e'(0)  ), // unused
+      .dst_fmt_i      ( fpnew_pkg::fp_format_e'(0)  ), // unused
+      .int_fmt_i      ( fpnew_pkg::int_format_e'(0) ), // unused
       .tag_i,
       .aux_i,
       .in_valid_i,
@@ -390,7 +390,7 @@ module fpnew_fma #(
     localparam NUM_REGS = PipeConfig==fpnew_pkg::DISTRIBUTED
                           ? ((NumPipeRegs + 2) / 3) // First to get regs
                           : NumPipeRegs;
-    fpnew_pipe_fma_inside #(
+    fpnew_pipe_inside_fma #(
       .ExpWidth    ( EXP_WIDTH      ),
       .PrecBits    ( PRECISION_BITS ),
       .NumPipeRegs ( NUM_REGS       ),
@@ -400,24 +400,25 @@ module fpnew_fma #(
     ) i_inside_pipe (
       .clk_i,
       .rst_ni,
-      .effective_subtraction_i ( effective_subtraction ),
-      .tentative_sign_i        ( tentative_sign        ),
-      .exponent_product_i      ( exponent_product      ),
-      .exponent_difference_i   ( exponent_difference   ),
-      .tentative_exponent_i    ( tentative_exponent    ),
-      .addend_shamt_i          ( addend_shamt          ),
-      .sticky_before_add_i     ( sticky_before_add     ),
-      .product_shifted_i       ( product_shifted       ),
-      .addend_shifted_i        ( addend_shifted        ),
-      .inject_carry_in_i       ( inject_carry_in       ),
-      .rnd_mode_i              ( rnd_mode_q            ),
-      .result_is_special_i     ( result_is_special     ),
-      .special_result_i        ( special_result        ),
-      .special_status_i        ( special_status        ),
-      .tag_i                   ( tag_q                 ),
-      .aux_i                   ( aux_q                 ),
-      .in_valid_i              ( out_valid_input       ),
-      .in_ready_o              ( in_ready_inside       ),
+      .effective_subtraction_i ( effective_subtraction      ),
+      .tentative_sign_i        ( tentative_sign             ),
+      .exponent_product_i      ( exponent_product           ),
+      .exponent_difference_i   ( exponent_difference        ),
+      .tentative_exponent_i    ( tentative_exponent         ),
+      .addend_shamt_i          ( addend_shamt               ),
+      .sticky_before_add_i     ( sticky_before_add          ),
+      .product_shifted_i       ( product_shifted            ),
+      .addend_shifted_i        ( addend_shifted             ),
+      .inject_carry_in_i       ( inject_carry_in            ),
+      .rnd_mode_i              ( rnd_mode_q                 ),
+      .dst_fmt_i               ( fpnew_pkg::fp_format_e'(0) ), // unused
+      .result_is_special_i     ( result_is_special          ),
+      .special_result_i        ( special_result             ),
+      .special_status_i        ( special_status             ),
+      .tag_i                   ( tag_q                      ),
+      .aux_i                   ( aux_q                      ),
+      .in_valid_i              ( out_valid_input            ),
+      .in_ready_o              ( in_ready_inside            ),
       .flush_i,
       .effective_subtraction_o ( effective_subtraction_q ),
       .tentative_sign_o        ( tentative_sign_q        ),
@@ -430,6 +431,7 @@ module fpnew_fma #(
       .addend_shifted_o        ( addend_shifted_q        ),
       .inject_carry_in_o       ( inject_carry_in_q       ),
       .rnd_mode_o              ( rnd_mode_q2             ),
+      .dst_fmt_o               ( /* unused */            ),
       .result_is_special_o     ( result_is_special_q     ),
       .special_result_o        ( special_result_q        ),
       .special_status_o        ( special_status_q        ),
@@ -633,7 +635,6 @@ module fpnew_fma #(
   fpnew_pkg::status_t status_d;
   logic               busy_output;
 
-
   // Select output depending on special case detection
   assign result_d = result_is_special_q ? special_result_q : regular_result;
   assign status_d = result_is_special_q ? special_status_q : regular_status;
@@ -649,7 +650,8 @@ module fpnew_fma #(
     fpnew_pipe_out #(
       .Width       ( WIDTH       ),
       .NumPipeRegs ( NUM_REGS    ),
-      .TagType     ( TagType     )
+      .TagType     ( TagType     ),
+      .AuxType     ( AuxType     )
     ) i_output_pipe (
       .clk_i,
       .rst_ni,
